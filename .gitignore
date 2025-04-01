@@ -1,4 +1,6 @@
 /target
 .env
 .bundler_keystores
-Secrets.toml
+Secrets.toml.shuttle*
+Secrets*.toml
+.shuttle

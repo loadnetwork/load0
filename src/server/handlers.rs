@@ -1,38 +1,34 @@
-use crate::core::s3_client::{self, init_s3_client};
-use axum::body::Body;
-use axum::extract::Path;
-use axum::http::response;
-use axum::response::IntoResponse;
-use axum::response::Response;
-use axum::{
-    Json, Router,
-    extract::{Query, State},
-    http::StatusCode,
-    routing::post,
-};
-use futures::stream::{self, Stream};
-use reqwest::header::{self, HeaderMap};
-use serde_json::{Value, json};
-
-use std::convert::Infallible;
-
 use crate::server::types::{AppState, UploadQuery, UploadResponse};
 use crate::utils::hash::generate_pseudorandom_keccak_hash;
-use bytes::Bytes;
+use axum::body::Body;
+use axum::extract::Path;
+use axum::response::IntoResponse;
+use axum::{
+    Json,
+    extract::{Query, State},
+    http::StatusCode,
+};
+use futures::StreamExt;
+use futures::stream::{self, Stream};
+use serde_json::{Value, json};
+use std::convert::Infallible;
 use std::sync::Arc;
+use tokio_util::io::StreamReader;
 
 // server status handler
 pub async fn server_status_handler() -> Json<Value> {
     Json(json!({"status": "running"}))
 }
 
-// binary uploads handler
+// uploads handler
 pub async fn upload_binary_handler(
     State(state): State<Arc<AppState>>,
     Query(params): Query<UploadQuery>,
     headers: axum::http::HeaderMap,
-    body: Bytes,
-) -> (StatusCode, Json<UploadResponse>) {
+    body: axum::body::Body,
+) -> impl IntoResponse {
+    println!("UPLOAD BINARY HANDLER CALLED!");
+
     let filename_hash = generate_pseudorandom_keccak_hash();
     let content_type = params
         .content_type
@@ -46,6 +42,29 @@ pub async fn upload_binary_handler(
 
     println!("CONTENT TYPE {:?}", content_type);
 
+    let stream = body.into_data_stream();
+
+    let mut full_body = Vec::new();
+    let mut stream =
+        stream.map(|result| result.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)));
+    let mut stream_reader = StreamReader::new(stream);
+
+    match tokio::io::copy(&mut stream_reader, &mut full_body).await {
+        Ok(_) => {
+            println!("Total body size: {} bytes", full_body.len());
+        }
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(UploadResponse {
+                    success: false,
+                    message: format!("Error reading request body: {}", e),
+                    optimistic_hash: None,
+                }),
+            );
+        }
+    }
+
     // For Supabase REST API instead of S3 compatible API due to some weird API structure from supabase-s3 side
     let rest_url = state.supabase_url.replace("/v1/s3", "/v1/object");
     let url = format!("{}/{}/{}", rest_url, state.bucket_name, filename_hash);
@@ -56,7 +75,7 @@ pub async fn upload_binary_handler(
         .header("Content-Type", &content_type)
         .header("Authorization", format!("Bearer {}", state.api_key))
         .header("apikey", &state.api_key)
-        .body(body)
+        .body(full_body)
         .send()
         .await
     {
@@ -105,7 +124,6 @@ pub async fn download_object_handler(
     State(state): State<Arc<AppState>>,
     Path(filename): Path<String>,
 ) -> impl IntoResponse {
-    // Direct URL to the object
     let direct_url = format!(
         "{}/object/public/{}/{}",
         state.supabase_url.replace("/v1/s3", "/v1"),

@@ -1,15 +1,15 @@
-use axum::{
-    Json, Router,
-    extract::{Query, State},
-    http::StatusCode,
-    routing::get,
-    routing::post,
-};
+use axum::{Router, routing::get, routing::post};
+
+use std::time::Duration;
+use tower_http::cors::{Any, CorsLayer};
+use tower_http::limit::RequestBodyLimitLayer;
+use tower_http::timeout::TimeoutLayer;
 
 use crate::server::handlers::{
     download_object_handler, server_status_handler, upload_binary_handler,
 };
 use crate::server::types::AppState;
+use crate::utils::constants::SERVER_REQUEST_BODY_LIMIT;
 use crate::utils::get_env::get_env_var;
 use reqwest::Client;
 use shuttle_runtime::SecretStore;
@@ -50,10 +50,21 @@ async fn main(#[shuttle_runtime::Secrets] secrets: SecretStore) -> shuttle_axum:
     let state = Arc::new(app_state);
     println!("supabase connected to: {}", state.supabase_url);
 
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
+    let timeout = TimeoutLayer::new(Duration::from_secs(3600));
+    let request_body_limit = RequestBodyLimitLayer::new(SERVER_REQUEST_BODY_LIMIT);
+
     let router = Router::new()
         .route("/", get(server_status_handler))
         .route("/upload-binary", post(upload_binary_handler))
         .route("/download/{optimistic_hash}", get(download_object_handler))
+        .layer(timeout)
+        .layer(cors)
+        .layer(request_body_limit)
         .with_state(state);
 
     Ok(router.into())
