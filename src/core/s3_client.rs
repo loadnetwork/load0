@@ -1,7 +1,7 @@
 use crate::utils::get_env::get_env_var;
 use anyhow::Error;
 use aws_config::Region;
-use aws_sdk_s3::{Client, Config, config::Credentials};
+use aws_sdk_s3::{Client, Config, config::Credentials, primitives::ByteStream};
 
 pub async fn init_s3_client() -> Result<Client, Error> {
     let endpoint_uri = get_env_var("SUPABASE_URL")?;
