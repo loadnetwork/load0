@@ -3246,6 +3246,8 @@ dependencies = [
  "bundler",
  "bytes",
  "dotenv",
+ "futures",
+ "futures-util",
  "hex",
  "reqwest 0.11.27",
  "serde",
@@ -3255,6 +3257,7 @@ dependencies = [
  "shuttle-runtime",
  "shuttle-secrets",
  "tokio",
+ "tokio-util",
  "uuid 1.16.0",
 ]
 

@@ -6,7 +6,9 @@ use axum::{
     routing::post,
 };
 
-use crate::server::handlers::{server_status_handler, upload_binary_handler};
+use crate::server::handlers::{
+    download_object_handler, server_status_handler, upload_binary_handler,
+};
 use crate::server::types::AppState;
 use crate::utils::get_env::get_env_var;
 use reqwest::Client;
@@ -51,6 +53,7 @@ async fn main(#[shuttle_runtime::Secrets] secrets: SecretStore) -> shuttle_axum:
     let router = Router::new()
         .route("/", get(server_status_handler))
         .route("/upload-binary", post(upload_binary_handler))
+        .route("/download/{optimistic_hash}", get(download_object_handler))
         .with_state(state);
 
     Ok(router.into())
