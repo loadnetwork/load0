@@ -16,12 +16,14 @@ pub async fn update() -> Result<(), Error> {
 
     let unsettled_bundles = get_unsettled_bundles().await?;
     println!("UNSETTLED BUNDLES: {:?}", unsettled_bundles);
-    if (unsettled_bundles.len() == 0) {
+    let header_bundle = unsettled_bundles
+    .get(0)
+    .ok_or_else(|| anyhow!("Error getting unsettled bundles"))?;
+
+    if (unsettled_bundles.len() == 0 || header_bundle.data_size == 0) {
         return Ok(());
     }
-    let header_bundle = unsettled_bundles
-        .get(0)
-        .ok_or_else(|| anyhow!("Error getting unsettled bundles"))?;
+
     let header_bundle_obj = get_optimistic_bundle_data(&header_bundle.optimistic_hash).await?;
     let header_bundle_data = header_bundle_obj.0.clone();
     let header_bundle_size = header_bundle_obj.0.len() as f64;

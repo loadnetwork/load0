@@ -13,7 +13,9 @@
 
 First, the user sends data to the load0 REST API `/upload` endpoint -- the data is pushed to load0's S3 bucket and returns an optimistic hash (keccak hash) which allows the users to instantly retrieve the object data from load0.
 
-After being added to the load0 bucket, the object gets added to the orchestrator queue that uploads the optimistic cached objects to Load Network. Using Large Bundle & SuperAccount, the S3 bucket objects get sequentially uploaded to Load and therefore, permanently stored while maintaining very fast uploads and downloads.
+After being added to the load0 bucket, the object gets added to the orchestrator queue that uploads the optimistic cached objects to Load Network. Using Large Bundle & SuperAccount, the S3 bucket objects get sequentially uploaded to Load and therefore, permanently stored while maintaining very fast uploads and downloads. *Object size limit: 1 byte -> 2GB*.
+
+
 
 ```mermaid
 flowchart TB
