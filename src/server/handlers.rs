@@ -1,4 +1,6 @@
+use crate::orchestrator::db::insert_bundle;
 use crate::server::types::{AppState, UploadQuery, UploadResponse};
+use crate::utils::constants::ZERO_ADDRESS;
 use crate::utils::hash::generate_pseudorandom_keccak_hash;
 use axum::body::Body;
 use axum::extract::Path;
@@ -75,12 +77,15 @@ pub async fn upload_binary_handler(
         .header("Content-Type", &content_type)
         .header("Authorization", format!("Bearer {}", state.api_key))
         .header("apikey", &state.api_key)
-        .body(full_body)
+        .body(full_body.clone())
         .send()
         .await
     {
         Ok(response) => {
             if response.status().is_success() {
+                let _ = insert_bundle(&filename_hash, ZERO_ADDRESS, full_body.len() as u32, false)
+                    .await
+                    .unwrap();
                 (
                     StatusCode::OK,
                     Json(UploadResponse {

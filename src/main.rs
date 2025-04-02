@@ -5,6 +5,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::timeout::TimeoutLayer;
 
+use crate::orchestrator::cron::update;
 use crate::server::handlers::{
     download_object_handler, server_status_handler, upload_binary_handler,
 };
@@ -16,6 +17,7 @@ use shuttle_runtime::SecretStore;
 use std::sync::Arc;
 
 pub mod core;
+pub mod orchestrator;
 pub mod server;
 pub mod utils;
 
@@ -49,7 +51,14 @@ async fn main(#[shuttle_runtime::Secrets] secrets: SecretStore) -> shuttle_axum:
     let app_state = init_app_state(&secrets).await?;
     let state = Arc::new(app_state);
     println!("supabase connected to: {}", state.supabase_url);
-
+    // Spawn a background task for updates
+    tokio::spawn(async move {
+        loop {
+            let _ = update().await.unwrap();
+            println!("orchestrator cronjob sleeping for 60s");
+            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+        }
+    });
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
