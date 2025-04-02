@@ -7,7 +7,8 @@ use tower_http::timeout::TimeoutLayer;
 
 use crate::orchestrator::cron::update;
 use crate::server::handlers::{
-    download_object_handler, server_status_handler, upload_binary_handler,
+    download_object_handler, get_bundle_by_load_txid_handler, get_bundle_by_op_hash_handler,
+    server_status_handler, upload_binary_handler,
 };
 use crate::server::types::AppState;
 use crate::utils::constants::SERVER_REQUEST_BODY_LIMIT;
@@ -71,6 +72,14 @@ async fn main(#[shuttle_runtime::Secrets] secrets: SecretStore) -> shuttle_axum:
         .route("/", get(server_status_handler))
         .route("/upload-binary", post(upload_binary_handler))
         .route("/download/{optimistic_hash}", get(download_object_handler))
+        .route(
+            "/bundle/optimistic/{op_hash}",
+            get(get_bundle_by_op_hash_handler),
+        )
+        .route(
+            "/bundle/load/{bundle_txid}",
+            get(get_bundle_by_load_txid_handler),
+        )
         .layer(timeout)
         .layer(cors)
         .layer(request_body_limit)

@@ -1,4 +1,4 @@
-use crate::orchestrator::db::insert_bundle;
+use crate::orchestrator::db::{get_bundle_by_optimistic_hash, get_bundle_by_txid, insert_bundle};
 use crate::server::types::{AppState, UploadQuery, UploadResponse};
 use crate::utils::constants::ZERO_ADDRESS;
 use crate::utils::hash::generate_pseudorandom_keccak_hash;
@@ -208,4 +208,14 @@ pub async fn download_object_handler(
             .unwrap()
             .into_response()
     }
+}
+
+pub async fn get_bundle_by_op_hash_handler(Path(op_hash): Path<String>) -> Json<Value> {
+    let bundle = get_bundle_by_optimistic_hash(&op_hash).await.unwrap();
+    Json(serde_json::to_value(bundle).unwrap())
+}
+
+pub async fn get_bundle_by_load_txid_handler(Path(bundle_txid): Path<String>) -> Json<Value> {
+    let bundle = get_bundle_by_txid(&bundle_txid).await.unwrap();
+    Json(serde_json::to_value(bundle).unwrap())
 }
