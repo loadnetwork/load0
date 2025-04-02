@@ -58,13 +58,13 @@ async fn main(#[shuttle_runtime::Secrets] secrets: SecretStore) -> shuttle_axum:
     let state = Arc::new(app_state);
     println!("supabase connected to: {}", state.supabase_url);
     // Spawn a background task for updates
-    tokio::spawn(async move {
-        loop {
-            let _ = update().await.unwrap();
-            println!("orchestrator cronjob sleeping for 60s");
-            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
-        }
-    });
+    // tokio::spawn(async move {
+    //     loop {
+    //         let _ = update().await.unwrap();
+    //         println!("orchestrator cronjob sleeping for 60s");
+    //         tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+    //     }
+    // });
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
