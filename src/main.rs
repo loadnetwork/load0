@@ -49,7 +49,13 @@ async fn init_app_state(secrets: &SecretStore) -> Result<AppState, anyhow::Error
 
 #[shuttle_runtime::main]
 async fn main(#[shuttle_runtime::Secrets] secrets: SecretStore) -> shuttle_axum::ShuttleAxum {
+
     let app_state = init_app_state(&secrets).await?;
+
+    secrets.into_iter().for_each(|(key, val)| unsafe {
+        std::env::set_var(key, val);
+    });
+
     let state = Arc::new(app_state);
     println!("supabase connected to: {}", state.supabase_url);
     // Spawn a background task for updates
