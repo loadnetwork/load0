@@ -78,6 +78,8 @@ async fn main(#[shuttle_runtime::Secrets] secrets: SecretStore) -> shuttle_axum:
         .route("/stats", get(bundles_stats_handler))
         .route("/upload", post(upload_binary_handler))
         .route("/download/{optimistic_hash}", get(download_object_handler))
+        // to maintain same route as gateway.load.rs
+        .route("/resolve/{optimistic_hash}", get(download_object_handler))
         .route(
             "/bundle/optimistic/{op_hash}",
             get(get_bundle_by_op_hash_handler),
