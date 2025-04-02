@@ -7,8 +7,8 @@ use tower_http::timeout::TimeoutLayer;
 
 use crate::orchestrator::cron::update;
 use crate::server::handlers::{
-    download_object_handler, get_bundle_by_load_txid_handler, get_bundle_by_op_hash_handler,
-    server_status_handler, upload_binary_handler,
+    bundles_stats_handler, download_object_handler, get_bundle_by_load_txid_handler,
+    get_bundle_by_op_hash_handler, server_status_handler, upload_binary_handler,
 };
 use crate::server::types::AppState;
 use crate::utils::constants::SERVER_REQUEST_BODY_LIMIT;
@@ -49,7 +49,6 @@ async fn init_app_state(secrets: &SecretStore) -> Result<AppState, anyhow::Error
 
 #[shuttle_runtime::main]
 async fn main(#[shuttle_runtime::Secrets] secrets: SecretStore) -> shuttle_axum::ShuttleAxum {
-
     let app_state = init_app_state(&secrets).await?;
 
     secrets.into_iter().for_each(|(key, val)| unsafe {
@@ -76,7 +75,8 @@ async fn main(#[shuttle_runtime::Secrets] secrets: SecretStore) -> shuttle_axum:
 
     let router = Router::new()
         .route("/", get(server_status_handler))
-        .route("/upload-binary", post(upload_binary_handler))
+        .route("/stats", get(bundles_stats_handler))
+        .route("/upload", post(upload_binary_handler))
         .route("/download/{optimistic_hash}", get(download_object_handler))
         .route(
             "/bundle/optimistic/{op_hash}",
