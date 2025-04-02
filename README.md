@@ -17,13 +17,18 @@ After being added to the load0 bucket, the object gets added to the orchestrator
 
 ```mermaid
 flowchart TB
-    User([User]) -->|1. Data| API["REST API\n/upload endpoint"]
-    API -->|2. Store| S3["load0 S3 Bucket"]
-    API -->|3. Return\noptimistic hash| User
-    S3 -->|4. Queue| Queue["Orchestrator Queue"]
-    Queue -->|5. Sequential\nupload| LoadNetwork["Load Network\nvia Large Bundle\n& SuperAccount"]
-    User -->|6. Instant retrieval\nwith hash| S3
-    S3 -.->|7. Long-term\nstorage| LoadNetwork
+    user[User] -->|1- Send data| api[REST API]
+    api -->|2- Store| s3[S3 Bucket]
+    api -->|3- Return hash| user
+    s3 -->|4- Queue| queue[Orchestrator Queue]
+    queue -->|5- Upload| load[Load Network]
+    user -->|6- Retrieve| s3
+    s3 -.->|7- Permanent storage| load
+    style user fill:#2d3748,stroke:#1a202c,color:#fff
+    style api fill:#1a365d,stroke:#2a4365,color:#fff
+    style s3 fill:#22543d,stroke:#276749,color:#fff
+    style queue fill:#3c366b,stroke:#4c51bf,color:#fff
+    style load fill:#2b6cb0,stroke:#3182ce,color:#fff
 ```
 
 ## REST API
