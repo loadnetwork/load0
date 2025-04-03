@@ -73,6 +73,7 @@ pub struct Bundle {
     pub bundle_txid: String,
     pub data_size: u32,
     pub is_settled: bool,
+    pub content_type: String
 }
 ```
 

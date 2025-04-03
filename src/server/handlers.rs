@@ -164,6 +164,7 @@ pub async fn download_object_handler(
     };
 
     let object_metadata = get_bundle_by_optimistic_hash(&filename).await.unwrap();
+    println!("REQUESTED BUNDLE: {:?}", object_metadata);
     let content_type = object_metadata.content_type;
 
     if !file_response.status().is_success() {
