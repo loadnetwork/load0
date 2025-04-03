@@ -17,8 +17,8 @@ pub async fn update() -> Result<(), Error> {
     let unsettled_bundles = get_unsettled_bundles().await?;
     println!("UNSETTLED BUNDLES: {:?}", unsettled_bundles);
     let header_bundle = unsettled_bundles
-    .get(0)
-    .ok_or_else(|| anyhow!("Error getting unsettled bundles"))?;
+        .get(0)
+        .ok_or_else(|| anyhow!("Error getting unsettled bundles"))?;
 
     if (unsettled_bundles.len() == 0 || header_bundle.data_size == 0) {
         return Ok(());

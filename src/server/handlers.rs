@@ -85,9 +85,15 @@ pub async fn upload_binary_handler(
     {
         Ok(response) => {
             if response.status().is_success() {
-                let _ = insert_bundle(&filename_hash, ZERO_ADDRESS, full_body.len() as u32, false)
-                    .await
-                    .unwrap();
+                let _ = insert_bundle(
+                    &filename_hash,
+                    ZERO_ADDRESS,
+                    full_body.len() as u32,
+                    false,
+                    &content_type,
+                )
+                .await
+                .unwrap();
                 (
                     StatusCode::OK,
                     Json(UploadResponse {
@@ -157,6 +163,9 @@ pub async fn download_object_handler(
         }
     };
 
+    let object_metadata = get_bundle_by_optimistic_hash(&filename).await.unwrap();
+    let content_type = object_metadata.content_type;
+
     if !file_response.status().is_success() {
         let status = file_response.status();
         let error_text = file_response.text().await.unwrap_or_default();
@@ -168,12 +177,14 @@ pub async fn download_object_handler(
         )
             .into_response();
     }
-    let content_type = file_response
-        .headers()
-        .get("content-type")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("application/octet-stream")
-        .to_string();
+    // let content_type = file_response
+    //     .headers()
+    //     .get("content-type")
+    //     .and_then(|v| v.to_str().ok())
+    //     .unwrap_or("application/octet-stream")
+    //     .to_string();
+
+    println!("RENDERING MIME TYPE: {:?}", content_type);
 
     let is_video = content_type.starts_with("video/");
     let bytes = match file_response.bytes().await {
