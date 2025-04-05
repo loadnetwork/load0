@@ -79,7 +79,9 @@ pub async fn get_settled_bundles() -> Result<Vec<Bundle>, Error> {
 
 pub async fn get_unsettled_bundles() -> Result<Vec<Bundle>, Error> {
     let conn = ps_client().await?;
-    let query_str = "SELECT * FROM bundles WHERE is_settled = FALSE AND data_size > 0";
+    let query_str =
+        "SELECT * FROM bundles WHERE is_settled = FALSE AND data_size > 0 ORDER BY id ASC LIMIT 5";
+
     let results: Vec<Bundle> = query(&query_str).fetch_all(&conn).await?;
     Ok(results)
 }

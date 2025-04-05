@@ -15,3 +15,4 @@ CREATE INDEX idx_bundles_bundle_txid ON bundles(bundle_txid);
 CREATE INDEX idx_bundles_data_size ON bundles(data_size);
 CREATE INDEX idx_bundles_is_settled ON bundles(is_settled);
 CREATE INDEX idx_bundles_content_type ON bundles(content_type);
+CREATE INDEX idx_is_settled_data_size ON bundles(is_settled, data_size);
