@@ -13,10 +13,11 @@ use axum::{
     http::StatusCode,
 };
 use futures::StreamExt;
-use futures::stream::{self, Stream};
+use futures::stream::{self};
 use serde_json::{Value, json};
 use std::convert::Infallible;
 use std::sync::Arc;
+use tokio::io::AsyncReadExt;
 use tokio_util::io::StreamReader;
 
 // server status handler
@@ -24,15 +25,15 @@ pub async fn server_status_handler() -> Json<Value> {
     Json(json!({"status": "running"}))
 }
 
-// uploads handler
+// uploads handler with improved chunked reading and detailed logging
 pub async fn upload_binary_handler(
     State(state): State<Arc<AppState>>,
     Query(params): Query<UploadQuery>,
     headers: axum::http::HeaderMap,
     body: axum::body::Body,
 ) -> impl IntoResponse {
-    println!("UPLOAD BINARY HANDLER CALLED!");
-
+    let start_time = std::time::Instant::now();
+    println!("UPLOAD BINARY HANDLER CALLED");
     let filename_hash = generate_pseudorandom_keccak_hash();
     let content_type = params
         .content_type
@@ -44,35 +45,73 @@ pub async fn upload_binary_handler(
         })
         .unwrap_or_else(|| "application/octet-stream".to_string());
 
-    println!("CONTENT TYPE {:?}", content_type);
+    println!("CONTENT TYPE: {:?}", content_type);
+
+    // let is_large_file = content_type.starts_with("video/") ||
+    //                     content_type.starts_with("audio/") ||
+    //                     content_type.starts_with("application/octet-stream") ||
+    //                     content_type.starts_with("image/");
 
     let stream = body.into_data_stream();
-
     let mut full_body = Vec::new();
-    let mut stream =
+    let stream =
         stream.map(|result| result.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)));
     let mut stream_reader = StreamReader::new(stream);
 
-    match tokio::io::copy(&mut stream_reader, &mut full_body).await {
-        Ok(_) => {
-            println!("Total body size: {} bytes", full_body.len());
-        }
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(UploadResponse {
-                    success: false,
-                    message: format!("Error reading request body: {}", e),
-                    optimistic_hash: None,
-                }),
-            );
+    // read the data in chunks
+    let read_start = std::time::Instant::now();
+    let mut buffer = vec![0u8; 64 * 1024]; // 64KB buffer
+    let mut total_bytes = 0;
+
+    loop {
+        match stream_reader.read(&mut buffer).await {
+            Ok(0) => break,
+            Ok(n) => {
+                full_body.extend_from_slice(&buffer[..n]);
+                total_bytes += n;
+
+                if total_bytes % (5 * 1024 * 1024) < n {
+                    // Log every ~5MB
+                    println!(
+                        "Read progress: {} MB in {:?}",
+                        total_bytes / (1024 * 1024),
+                        read_start.elapsed()
+                    );
+                }
+            }
+            Err(e) => {
+                println!("Error reading request body: {}", e);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(UploadResponse {
+                        success: false,
+                        message: format!("Error reading request body: {}", e),
+                        optimistic_hash: None,
+                    }),
+                )
+                    .into_response();
+            }
         }
     }
 
-    // For Supabase REST API instead of S3 compatible API due to some weird API structure from supabase-s3 side
+    println!(
+        "Total body size: {} bytes, read in {:?}",
+        total_bytes,
+        read_start.elapsed()
+    );
+
+    // For large files, log the size in MB
+    if total_bytes > 5 * 1024 * 1024 {
+        // If larger than 5MB
+        println!("Large file upload: {} MB", total_bytes / (1024 * 1024));
+    }
+
     let rest_url = state.supabase_url.replace("/v1/s3", "/v1/object");
     let url = format!("{}/{}/{}", rest_url, state.bucket_name, filename_hash);
 
+    println!("Uploading to URL: {}", url);
+
+    let upload_start = std::time::Instant::now();
     match state
         .http_client
         .post(&url)
@@ -84,8 +123,11 @@ pub async fn upload_binary_handler(
         .await
     {
         Ok(response) => {
+            println!("Upload completed in {:?}", upload_start.elapsed());
+
             if response.status().is_success() {
-                let _ = insert_bundle(
+                let db_start = std::time::Instant::now();
+                match insert_bundle(
                     &filename_hash,
                     ZERO_ADDRESS,
                     full_body.len() as u32,
@@ -93,15 +135,42 @@ pub async fn upload_binary_handler(
                     &content_type,
                 )
                 .await
-                .unwrap();
-                (
-                    StatusCode::OK,
-                    Json(UploadResponse {
-                        success: true,
-                        message: "Upload successful".to_string(),
-                        optimistic_hash: Some(filename_hash),
-                    }),
-                )
+                {
+                    Ok(_) => {
+                        println!("Database record created in {:?}", db_start.elapsed());
+                        println!("Total upload handler time: {:?}", start_time.elapsed());
+
+                        (
+                            StatusCode::OK,
+                            Json(UploadResponse {
+                                success: true,
+                                message: format!(
+                                    "Upload successful. Size: {} bytes, Time: {:?}",
+                                    full_body.len(),
+                                    start_time.elapsed()
+                                ),
+                                optimistic_hash: Some(filename_hash),
+                            }),
+                        )
+                            .into_response()
+                    }
+                    Err(e) => {
+                        println!("Error inserting bundle record: {:?}", e);
+
+                        (
+                            StatusCode::OK,
+                            Json(UploadResponse {
+                                success: true,
+                                message: format!(
+                                    "Upload successful but failed to create database record: {}",
+                                    e
+                                ),
+                                optimistic_hash: Some(filename_hash),
+                            }),
+                        )
+                            .into_response()
+                    }
+                }
             } else {
                 let status = response.status();
                 let error_text = response.text().await.unwrap_or_default();
@@ -115,6 +184,7 @@ pub async fn upload_binary_handler(
                         optimistic_hash: None,
                     }),
                 )
+                    .into_response()
             }
         }
         Err(err) => {
@@ -128,6 +198,7 @@ pub async fn upload_binary_handler(
                     optimistic_hash: None,
                 }),
             )
+                .into_response()
         }
     }
 }
@@ -137,6 +208,26 @@ pub async fn download_object_handler(
     State(state): State<Arc<AppState>>,
     Path(filename): Path<String>,
 ) -> impl IntoResponse {
+    let start_time = std::time::Instant::now();
+
+    let object_metadata = match get_bundle_by_optimistic_hash(&filename).await {
+        Ok(metadata) => {
+            println!("REQUESTED BUNDLE: {:?}", metadata);
+            metadata
+        }
+        Err(e) => {
+            println!("Error getting bundle metadata: {}", e);
+            return (
+                StatusCode::NOT_FOUND,
+                format!("Bundle not found: {}. Error: {}", filename, e),
+            )
+                .into_response();
+        }
+    };
+
+    let content_type = object_metadata.content_type;
+    println!("RENDERING MIME TYPE: {:?}", content_type);
+
     let direct_url = format!(
         "{}/object/public/{}/{}",
         state.supabase_url.replace("/v1/s3", "/v1"),
@@ -163,10 +254,6 @@ pub async fn download_object_handler(
         }
     };
 
-    let object_metadata = get_bundle_by_optimistic_hash(&filename).await.unwrap();
-    println!("REQUESTED BUNDLE: {:?}", object_metadata);
-    let content_type = object_metadata.content_type;
-
     if !file_response.status().is_success() {
         let status = file_response.status();
         let error_text = file_response.text().await.unwrap_or_default();
@@ -178,18 +265,17 @@ pub async fn download_object_handler(
         )
             .into_response();
     }
-    // let content_type = file_response
-    //     .headers()
-    //     .get("content-type")
-    //     .and_then(|v| v.to_str().ok())
-    //     .unwrap_or("application/octet-stream")
-    //     .to_string();
 
-    println!("RENDERING MIME TYPE: {:?}", content_type);
-
-    let is_video = content_type.starts_with("video/");
+    let bytes_start = std::time::Instant::now();
     let bytes = match file_response.bytes().await {
-        Ok(b) => b,
+        Ok(b) => {
+            println!(
+                "Downloaded {} bytes in {:?}",
+                b.len(),
+                bytes_start.elapsed()
+            );
+            b
+        }
         Err(e) => {
             println!("Error reading file bytes: {}", e);
             return (
@@ -201,8 +287,14 @@ pub async fn download_object_handler(
     };
 
     let stream = stream::once(async move { Ok::<_, Infallible>(bytes) });
-
     let body = Body::from_stream(stream);
+
+    println!(
+        "Download handler setup completed in {:?}",
+        start_time.elapsed()
+    );
+
+    let is_video = content_type.starts_with("video/");
 
     if is_video {
         axum::response::Response::builder()
@@ -218,6 +310,7 @@ pub async fn download_object_handler(
             .status(StatusCode::OK)
             .header("content-type", content_type)
             .header("transfer-encoding", "chunked")
+            .header("cache-control", "public, max-age=3600") // 1 hour cache for non-video content
             .body(body)
             .unwrap()
             .into_response()

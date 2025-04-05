@@ -1,0 +1,9 @@
+[shuttle]
+cpu = 2.0  
+memory = 4096  
+
+min_instances = 1
+max_instances = 3
+
+region = "us-east-1"  
+request_timeout = 3600  
