@@ -53,51 +53,44 @@ async fn main() -> Result<(), anyhow::Error> {
         let semaphore = Arc::new(tokio::sync::Semaphore::new(2)); // Limit to 2 concurrent operations
 
         loop {
-            // Check if there are any unsettled bundles before acquiring a permit
             let unsettled_count = match get_unsettled_bundles().await {
                 Ok(bundles) => bundles.len(),
                 Err(_) => 0,
             };
 
             if unsettled_count == 0 {
-                // No work to do, sleep longer
                 println!("No unsettled bundles, sleeping for 120s");
                 tokio::time::sleep(tokio::time::Duration::from_secs(120)).await;
                 continue;
             }
 
-            // Try to acquire a permit with timeout
             let permit = match tokio::time::timeout(
                 Duration::from_secs(5),
-                semaphore.clone().acquire_owned()
-            ).await {
+                semaphore.clone().acquire_owned(),
+            )
+            .await
+            {
                 Ok(Ok(permit)) => permit,
                 Ok(Err(_)) => {
-                    // Semaphore was closed
                     println!("Semaphore closed, retrying in 60s");
                     tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
                     continue;
-                },
+                }
                 Err(_) => {
-                    // Timeout acquiring permit, system might be under load
                     println!("Timeout acquiring permit, system under load, sleeping for 60s");
                     tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
                     continue;
                 }
             };
 
-            // Process one bundle at a time with the permit
             tokio::spawn(async move {
-                // The permit is moved into this task and will be released when the task completes
                 let _permit = permit;
 
-                // Process a single bundle
                 if let Err(e) = update().await {
                     println!("Error in update: {:?}", e);
                 }
             });
 
-            // Add a small delay between spawns to prevent resource contention
             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
         }
     });
@@ -129,16 +122,14 @@ async fn main() -> Result<(), anyhow::Error> {
         .layer(request_body_limit)
         .with_state(state);
 
-    // Get port from environment or use default
     let port = std::env::var("PORT")
         .ok()
         .and_then(|p| p.parse::<u16>().ok())
         .unwrap_or(3000);
-    
+
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     tracing::info!("Listening on {}", addr);
 
-    // Start the server
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, router).await?;
 

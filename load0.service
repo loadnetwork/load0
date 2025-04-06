@@ -1,0 +1,16 @@
+[Unit]
+Description=Load0 Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/load0
+ExecStart=/root/load0/target/release/load0
+Restart=always
+RestartSec=5
+Environment=PATH=/usr/bin:/usr/local/bin:/root/.cargo/bin
+EnvironmentFile=/root/load0/.env
+
+[Install]
+WantedBy=multi-user.target
