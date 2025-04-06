@@ -38,30 +38,30 @@ flowchart TB
 ### 1- Upload object
 
 ```bash
-curl -X POST "https://load0.load.rs/upload" \
+curl -X POST "https://load0.network/upload" \
      --data-binary "@./video.mp4" \
      -H "Content-Type: video/mp4"
 ```
 ### 2- Download object (browser)
 
 ```bash
-GET https://load0.load.rs/download/{optimistic_hash}
+GET https://load0.network/download/{optimistic_hash}
 ```
 
 Also, to have endpoints similiarity as in `bundler.load.rs`, you can do:
 
 ```bash
-GET https://load0.load.rs/resolve/{optimistic_hash}
+GET https://load0.network/resolve/{optimistic_hash}
 ```
 
 ### 3- Retrieve Bundle metadata using optimistic hash or bundle txid (once settled)
 
 ```bash
-GET https://load0.load.rs/bundle/optimistic/{op_hash}
+GET https://load0.network/bundle/optimistic/{op_hash}
 ```
 
 ```bash
-GET https://load0.load.rs/bundle/load/{bundle_txid}
+GET https://load0.network/bundle/load/{bundle_txid}
 ```
 
 Returns:
@@ -79,7 +79,7 @@ pub struct Bundle {
 
 An object data can be accessed via:
 
-* optimistic caching: `https://load0.load.rs/resolve/{Bundle.optimistic_hash}`
+* optimistic caching: `https://load0.network/resolve/{Bundle.optimistic_hash}`
 * from Load Network (once settled): `https://bundler.load.rs/v2/resolve/{Bundle.bundle_txid}`
 
 ## License
