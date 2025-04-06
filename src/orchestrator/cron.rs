@@ -63,7 +63,7 @@ pub async fn update() -> Result<(), Error> {
 async fn get_optimistic_bundle_data(optimistic_hash: &str) -> Result<(Vec<u8>, String), Error> {
     let supabase_url = get_env_var("SUPABASE_URL").unwrap();
     let api_key = get_env_var("SUPABASE_API_KEY").unwrap();
-    let bucket_name = get_env_var("AWS_BUCKET_NAME").unwrap();
+    let bucket_name = get_env_var("S3_BUCKET_NAME").unwrap();
 
     let http_client = reqwest::ClientBuilder::new()
         .timeout(std::time::Duration::from_secs(60))

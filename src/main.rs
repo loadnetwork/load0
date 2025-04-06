@@ -26,7 +26,7 @@ pub mod utils;
 async fn init_app_state() -> Result<AppState, anyhow::Error> {
     let supabase_url = get_env_var("SUPABASE_URL").unwrap();
     let api_key = get_env_var("SUPABASE_API_KEY").unwrap();
-    let bucket_name = get_env_var("AWS_BUCKET_NAME").unwrap();
+    let bucket_name = get_env_var("S3_BUCKET_NAME").unwrap();
 
     // Create HTTP client
     let http_client = Client::new();

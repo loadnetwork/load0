@@ -3,7 +3,7 @@ use anyhow::Error;
 use bundler::utils::core::super_account::{Chunker, SuperAccount};
 
 pub async fn init_superaccount() -> Result<SuperAccount, Error> {
-    let env_keystore_path = get_env_var("KEYSTORE_PATH")?;
+    let env_keystore_path = get_env_var("KEYSTORE_DIR")?;
     let env_pwd = get_env_var("SUPERACCOUNT_PWD")?;
     let env_funder_pk = get_env_var("SUPERACCOUNT_PK")?;
     Ok(SuperAccount::new()
