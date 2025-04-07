@@ -28,7 +28,7 @@ pub async fn update() -> Result<(), Error> {
     let header_bundle_size = header_bundle_obj.0.len() as f64;
     let header_bundle_mime = header_bundle_obj.1;
 
-    let super_account = init_superaccount().await?;
+    // let super_account = init_superaccount().await?;
 
     let chunkers_count = (header_bundle_size as f64 / FOUR_MB as f64).ceil() as u32;
     println!("Processing bundle with {} chunks", chunkers_count);
@@ -37,8 +37,8 @@ pub async fn update() -> Result<(), Error> {
         .data(header_bundle_data)
         .private_key(funder_pk)
         .content_type(header_bundle_mime)
-        .super_account(super_account)
-        .with_chunkers_count(chunkers_count)
+        // .super_account(super_account)
+        // .with_chunkers_count(chunkers_count)
         .chunk()
         .build()
         .map_err(|e| anyhow!("Error building large bundle: {:?}", e))?;
