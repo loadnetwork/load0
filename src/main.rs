@@ -5,21 +5,34 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::timeout::TimeoutLayer;
 
+use crate::booter::Booter;
+use crate::governor_conf::get_governor_conf;
 use crate::orchestrator::cron::update;
 use crate::orchestrator::db::get_unsettled_bundles;
 use crate::server::handlers::{
     bundles_stats_handler, download_object_handler, get_bundle_by_load_txid_handler,
     get_bundle_by_op_hash_handler, server_status_handler, upload_binary_handler,
 };
+use crate::server::rate_limiter::{LOAD_HEADER_NAME, XLoadAuthHeaderExtractor};
 use crate::server::types::AppState;
+use crate::r#static::INTERNAL_KEY;
+use crate::utils::auth::is_access_token_valid;
 use crate::utils::constants::SERVER_REQUEST_BODY_LIMIT;
 use crate::utils::get_env::get_env_var;
+use axum::handler::HandlerWithoutStateExt;
+use axum::http::Request;
 use reqwest::Client;
 use std::sync::Arc;
+use tower::ServiceExt;
+use tower_governor::GovernorLayer;
+use tower_governor::governor::GovernorConfigBuilder;
 
+mod booter;
 pub mod core;
+mod governor_conf;
 pub mod orchestrator;
 pub mod server;
+mod r#static;
 pub mod utils;
 
 // Initialize app state from environment variables
@@ -37,6 +50,81 @@ async fn init_app_state() -> Result<AppState, anyhow::Error> {
         bucket_name,
         api_key,
     })
+}
+
+fn get_load_burst_size() -> u32 {
+    std::env::var("LOAD_BURST_SIZE")
+        .ok()
+        .and_then(|val| val.parse::<u32>().ok())
+        .unwrap_or(5)
+}
+
+fn protected_router() -> Router<Arc<AppState>> {
+    Router::new()
+        .route("/download/{optimistic_hash}", get(download_object_handler))
+        // to maintain same route as gateway.load.rs
+        .route("/resolve/{optimistic_hash}", get(download_object_handler))
+        .route(
+            "/bundle/optimistic/{op_hash}",
+            get(get_bundle_by_op_hash_handler),
+        )
+        .route(
+            "/bundle/load/{bundle_txid}",
+            get(get_bundle_by_load_txid_handler),
+        )
+}
+
+fn get_router(state: Arc<AppState>) -> Router {
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
+    let timeout = TimeoutLayer::new(Duration::from_secs(3600));
+    let request_body_limit = RequestBodyLimitLayer::new(SERVER_REQUEST_BODY_LIMIT);
+
+    let unprotected_router = protected_router().layer(GovernorLayer {
+        config: Arc::new(get_governor_conf(6)),
+    });
+
+    let protected_router = protected_router().layer(GovernorLayer {
+        config: Arc::new(get_governor_conf(60)),
+    });
+
+    let internal_router = crate::protected_router().layer(GovernorLayer {
+        config: Arc::new(get_governor_conf(999999)),
+    });
+
+    let dispatch_state = state.clone();
+
+    let dispatch = tower::service_fn(move |req: Request<axum::body::Body>| {
+        let internal_key = &*INTERNAL_KEY;
+
+        let req_header = req.headers().get(LOAD_HEADER_NAME);
+
+        let tier_router = match req_header.and_then(|h| h.to_str().ok()) {
+            Some(value) if value == internal_key => internal_router.clone(),
+            Some(value) if is_access_token_valid(value) => protected_router.clone(),
+            _ => unprotected_router.clone(),
+        };
+
+        let tier_router = tier_router.with_state(dispatch_state.clone());
+
+        // forward the *same* request into the chosen sub‑router
+        async move { tier_router.oneshot(req).await }
+    });
+
+    let router = Router::new()
+        .route("/", get(server_status_handler))
+        .route("/stats", get(bundles_stats_handler))
+        .route("/upload", post(upload_binary_handler))
+        .fallback_service(dispatch)
+        .layer(timeout)
+        .layer(cors)
+        .layer(request_body_limit)
+        .with_state(state);
+
+    router
 }
 
 #[tokio::main]
@@ -94,44 +182,9 @@ async fn main() -> Result<(), anyhow::Error> {
             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
         }
     });
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
 
-    let timeout = TimeoutLayer::new(Duration::from_secs(3600));
-    let request_body_limit = RequestBodyLimitLayer::new(SERVER_REQUEST_BODY_LIMIT);
-
-    let router = Router::new()
-        .route("/", get(server_status_handler))
-        .route("/stats", get(bundles_stats_handler))
-        .route("/upload", post(upload_binary_handler))
-        .route("/download/{optimistic_hash}", get(download_object_handler))
-        // to maintain same route as gateway.load.rs
-        .route("/resolve/{optimistic_hash}", get(download_object_handler))
-        .route(
-            "/bundle/optimistic/{op_hash}",
-            get(get_bundle_by_op_hash_handler),
-        )
-        .route(
-            "/bundle/load/{bundle_txid}",
-            get(get_bundle_by_load_txid_handler),
-        )
-        .layer(timeout)
-        .layer(cors)
-        .layer(request_body_limit)
-        .with_state(state);
-
-    let port = std::env::var("PORT")
-        .ok()
-        .and_then(|p| p.parse::<u16>().ok())
-        .unwrap_or(3000);
-
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    tracing::info!("Listening on {}", addr);
-
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, router).await?;
+    let booter = Booter::new(None).await;
+    let _ = booter.start(get_router(state)).await;
 
     Ok(())
 }
