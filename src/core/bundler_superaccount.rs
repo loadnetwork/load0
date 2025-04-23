@@ -16,19 +16,16 @@ pub async fn get_chunkers(
     super_account: SuperAccount,
     count: Option<u32>,
 ) -> Result<SuperAccount, Error> {
-    let chunkers = super_account.load_chunkers(count).await?;
-    Ok(chunkers)
+    Ok(super_account.load_chunkers(count).await?)
 }
 
 pub async fn create_chunkers(
     super_account: SuperAccount,
     count: u32,
 ) -> Result<SuperAccount, Error> {
-    let chunkers = super_account.create_chunkers(count).await?;
-    Ok(chunkers)
+    Ok(super_account.create_chunkers(count).await?)
 }
 
 pub async fn fund_chunkers(super_account: SuperAccount) -> Result<SuperAccount, Error> {
-    let funded_chunkers = super_account.fund_chunkers().await?;
-    Ok(funded_chunkers)
+    Ok(super_account.fund_chunkers().await?)
 }
