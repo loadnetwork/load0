@@ -4,3 +4,6 @@
 Secrets.toml.shuttle*
 Secrets*.toml
 .shuttle
+./.idea
+.idea
+/.idea
