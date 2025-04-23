@@ -25,7 +25,7 @@ impl KeyExtractor for XLoadAuthHeaderExtractor {
 
                     Ok(res.to_owned())
                 }
-                None => Ok(ip.0.to_string()),
+                None => Ok(ip.0.ip().to_string()),
             }
         } else {
             Err(GovernorError::UnableToExtractKey)
