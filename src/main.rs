@@ -13,7 +13,9 @@ use crate::server::handlers::{
     bundles_stats_handler, download_object_handler, get_bundle_by_load_txid_handler,
     get_bundle_by_op_hash_handler, server_status_handler, upload_binary_handler,
 };
-use crate::server::rate_limiter::{LOAD_HEADER_NAME, XLoadAuthHeaderExtractor};
+use crate::server::rate_limiter::{
+    LOAD_HEADER_NAME, XLoadAuthHeaderExtractor, is_whitelisted, whitelisted_urls,
+};
 use crate::server::types::AppState;
 use crate::r#static::INTERNAL_KEY;
 use crate::utils::auth::is_access_token_valid;
@@ -26,6 +28,7 @@ use std::sync::Arc;
 use tower::ServiceExt;
 use tower_governor::GovernorLayer;
 use tower_governor::governor::GovernorConfigBuilder;
+use url::Url;
 
 mod booter;
 pub mod core;
@@ -59,7 +62,7 @@ fn get_load_burst_size() -> u32 {
         .unwrap_or(5)
 }
 
-fn protected_router() -> Router<Arc<AppState>> {
+fn retrieval_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/download/{optimistic_hash}", get(download_object_handler))
         // to maintain same route as gateway.load.rs
@@ -74,6 +77,12 @@ fn protected_router() -> Router<Arc<AppState>> {
         )
 }
 
+fn retrieval_route_with_burst(burst_size_per_min: u32) -> Router<Arc<AppState>> {
+    retrieval_routes().layer(GovernorLayer {
+        config: Arc::new(get_governor_conf(burst_size_per_min)),
+    })
+}
+
 fn get_router(state: Arc<AppState>) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -83,29 +92,46 @@ fn get_router(state: Arc<AppState>) -> Router {
     let timeout = TimeoutLayer::new(Duration::from_secs(3600));
     let request_body_limit = RequestBodyLimitLayer::new(SERVER_REQUEST_BODY_LIMIT);
 
-    let unprotected_router = protected_router().layer(GovernorLayer {
-        config: Arc::new(get_governor_conf(6)),
-    });
+    let unprotected_router = retrieval_route_with_burst(6);
 
-    let protected_router = protected_router().layer(GovernorLayer {
-        config: Arc::new(get_governor_conf(60)),
-    });
+    let protected_router = retrieval_route_with_burst(60);
 
-    let internal_router = crate::protected_router().layer(GovernorLayer {
-        config: Arc::new(get_governor_conf(999999)),
-    });
+    let internal_router = retrieval_route_with_burst(999999);
 
     let dispatch_state = state.clone();
 
+    let whitelisted_urls = Arc::new(whitelisted_urls());
+
     let dispatch = tower::service_fn(move |req: Request<axum::body::Body>| {
         let internal_key = &*INTERNAL_KEY;
+        let headers = req.headers();
+        let whitelisted_urls = whitelisted_urls.clone();
 
-        let req_header = req.headers().get(LOAD_HEADER_NAME);
+        let req_header = headers.get(LOAD_HEADER_NAME);
+        let host_header = headers
+            .get("host")
+            .map(|e| e.to_str().unwrap_or(""))
+            .unwrap_or("");
+        let host_url = {
+            if host_header.starts_with("http://") || host_header.starts_with("https://") {
+                host_header.to_string()
+            } else {
+                format!("http://{}", host_header)
+            }
+        };
 
-        let tier_router = match req_header.and_then(|h| h.to_str().ok()) {
-            Some(value) if value == internal_key => internal_router.clone(),
-            Some(value) if is_access_token_valid(value) => protected_router.clone(),
-            _ => unprotected_router.clone(),
+        let is_url_whitelisted = is_whitelisted(Some(host_url), &whitelisted_urls);
+
+        let tier_router = {
+            if is_url_whitelisted {
+                retrieval_routes()
+            } else {
+                match req_header.and_then(|h| h.to_str().ok()) {
+                    Some(value) if value == internal_key => internal_router.clone(),
+                    Some(value) if is_access_token_valid(value) => protected_router.clone(),
+                    _ => unprotected_router.clone(),
+                }
+            }
         };
 
         let tier_router = tier_router.with_state(dispatch_state.clone());
