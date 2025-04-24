@@ -12,7 +12,7 @@ impl Booter {
         let port = std::env::var("PORT")
             .ok()
             .and_then(|p| p.parse::<u16>().ok())
-            .unwrap_or(port.unwrap_or(3000));
+            .unwrap_or(port.unwrap_or(8000));
 
         let addr = SocketAddr::from(([0, 0, 0, 0], port));
 

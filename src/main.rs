@@ -140,47 +140,47 @@ async fn main() -> Result<(), anyhow::Error> {
         // Create a semaphore to limit concurrent operations
         let semaphore = Arc::new(tokio::sync::Semaphore::new(2)); // Limit to 2 concurrent operations
 
-        loop {
-            let unsettled_count = match get_unsettled_bundles().await {
-                Ok(bundles) => bundles.len(),
-                Err(_) => 0,
-            };
+        // loop {
+        //     let unsettled_count = match get_unsettled_bundles().await {
+        //         Ok(bundles) => bundles.len(),
+        //         Err(_) => 0,
+        //     };
 
-            if unsettled_count == 0 {
-                println!("No unsettled bundles, sleeping for 120s");
-                tokio::time::sleep(tokio::time::Duration::from_secs(120)).await;
-                continue;
-            }
+        //     if unsettled_count == 0 {
+        //         println!("No unsettled bundles, sleeping for 120s");
+        //         tokio::time::sleep(tokio::time::Duration::from_secs(120)).await;
+        //         continue;
+        //     }
 
-            let permit = match tokio::time::timeout(
-                Duration::from_secs(5),
-                semaphore.clone().acquire_owned(),
-            )
-            .await
-            {
-                Ok(Ok(permit)) => permit,
-                Ok(Err(_)) => {
-                    println!("Semaphore closed, retrying in 60s");
-                    tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
-                    continue;
-                }
-                Err(_) => {
-                    println!("Timeout acquiring permit, system under load, sleeping for 60s");
-                    tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
-                    continue;
-                }
-            };
+        //     let permit = match tokio::time::timeout(
+        //         Duration::from_secs(5),
+        //         semaphore.clone().acquire_owned(),
+        //     )
+        //     .await
+        //     {
+        //         Ok(Ok(permit)) => permit,
+        //         Ok(Err(_)) => {
+        //             println!("Semaphore closed, retrying in 60s");
+        //             tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+        //             continue;
+        //         }
+        //         Err(_) => {
+        //             println!("Timeout acquiring permit, system under load, sleeping for 60s");
+        //             tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+        //             continue;
+        //         }
+        //     };
 
-            tokio::spawn(async move {
-                let _permit = permit;
+        //     tokio::spawn(async move {
+        //         let _permit = permit;
 
-                if let Err(e) = update().await {
-                    println!("Error in update: {:?}", e);
-                }
-            });
+        //         if let Err(e) = update().await {
+        //             println!("Error in update: {:?}", e);
+        //         }
+        //     });
 
-            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-        }
+        //     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+        // }
     });
 
     let booter = Booter::new(None).await;
